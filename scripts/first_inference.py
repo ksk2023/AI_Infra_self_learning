@@ -81,7 +81,7 @@ def decode_loop(use_cache: bool, verbose: bool):
     total_ms = 0.0
     steps_done = 0
     with torch.inference_mode():
-        for step in range(128):
+        for step in range(512):
             t = time.perf_counter()
             if use_cache:
                 out = model(step_inputs, past_key_values=past_kv, use_cache=True)
