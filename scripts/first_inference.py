@@ -40,7 +40,10 @@ print("========================================")
 temperature = float(sys.argv[1]) if len(sys.argv) > 1 else 0.7
 top_k = int(sys.argv[2]) if len(sys.argv) > 2 else 20        # 0 = 不限制
 top_p = float(sys.argv[3]) if len(sys.argv) > 3 else 0.8     # 1.0 = 不限制
-print(f"4. Generating response (temperature={temperature}, top_k={top_k}, top_p={top_p})...")
+seed = int(sys.argv[4]) if len(sys.argv) > 4 else None
+if seed is not None:
+    torch.manual_seed(seed)  # 实验八：固定随机种子，让骰子可复现
+print(f"4. Generating response (temperature={temperature}, top_k={top_k}, top_p={top_p}, seed={seed})...")
 
 with torch.inference_mode():
     outputs = model.generate(
