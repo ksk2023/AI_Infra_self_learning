@@ -13,7 +13,7 @@
 - [仓库结构](#仓库结构)
 - [快速开始](#快速开始)
 - [实验改动一览](#实验改动一览)
-- [核心概念速查表](#核心概念速查表)
+- [核心概念速查表](#核心概念速查表)（详细版：[experiments/concepts-guide.md](./experiments/concepts-guide.md)）
 - [实测数据汇总](#实测数据汇总)
 - [诚实的测量说明（Limitations）](#诚实的测量说明limitations)
 - [Git 实验地图](#git-实验地图)
@@ -35,6 +35,7 @@
 .
 ├── README.md                     # 本页：总览 + 改动一览
 ├── experiments/                  # ★ 每个实验的详细记录
+│   ├── concepts-guide.md         # ★ 核心概念详解（是什么→怎么工作→实验证据→工程实践）
 │   ├── experiment-01.md          # Chat 模板揭秘
 │   ├── experiment-02.md          # 截断 vs 自然停止
 │   ├── experiment-03.md          # generate 返回完整序列
@@ -91,21 +92,23 @@ python3 scripts/first_inference.py 1.5 0 1.0 42     # 再固定种子：混乱�
 
 ## 核心概念速查表
 
-| 概念 | 一句话 |
-|---|---|
-| Chat 模板 | 把消息列表拼成带特殊 token 的单段文本，是"对话"的真实形态 |
-| 特殊 token | `<\|im_start\|>` / `<\|im_end\|>` 等，模型的"格式控制符" |
-| 停止纪律 | eos 检查由推理引擎执行，模型只是"倾向于"在 im_end 处收尾 |
-| 贪心 vs 采样 | argmax（确定呆板）vs 按分布掷骰子（多样不确定） |
-| temperature | softmax(logits/T)：调骰子偏心程度，T→0 退化为贪心 |
-| top_k / top_p | 限定骰子候选池：固定前 K 个 / 累计概率 p 的自适应集合 |
-| 种子 | 固定 RNG 初始状态=固定"随机"数列；同环境 100% 可复现 |
-| Prefill | 整段 prompt 一次并行处理，填满 KV 缓存，产出第 1 个 token（算力型） |
-| Decode | 每步进 1 出 1 的串行续写，历史以缓存形式参与（访存型） |
-| KV Cache | 存下已算好的 K/V，历史只读不重算；省时间、吃显存 |
-| TTFT / TPOT | 首 token 延迟（由 Prefill 决定）/ 单 token 生成时间（由 Decode 决定）；总耗时 ≈ TTFT + N × TPOT |
-| 蝴蝶效应 | 浮点差异在概率打平点翻转 token 选择，后续轨迹整体分叉 |
-| 自回归 | 每步生成的 token 转身成为下一步的唯一输入，环环相扣无法并行 |
+> 每个概念的**详细解释（是什么 → 怎么工作 → 实验证据 → 工程实践）**见 **[概念详解](./experiments/concepts-guide.md)**，下表是快速索引。
+
+| 概念 | 一句话 | 详解 |
+|---|---|---|
+| Chat 模板 | 把消息列表拼成带特殊 token 的单段文本，是"对话"的真实形态 | [链接](./experiments/concepts-guide.md#11-chat-模板) |
+| 特殊 token | `<\|im_start\|>` / `<\|im_end\|>` 等，模型的"格式控制符" | [链接](./experiments/concepts-guide.md#12-特殊-token) |
+| 自回归 | 每步生成的 token 转身成为下一步的唯一输入，环环相扣无法并行 | [链接](./experiments/concepts-guide.md#21-自回归autoregression) |
+| 停止纪律 | eos 检查由推理引擎执行，模型只是"倾向于"在 im_end 处收尾 | [链接](./experiments/concepts-guide.md#22-停止纪律eos-discipline) |
+| 贪心 vs 采样 | argmax（确定呆板）vs 按分布掷骰子（多样不确定） | [链接](./experiments/concepts-guide.md#31-贪心-vs-采样) |
+| temperature | softmax(logits/T)：调骰子偏心程度，T→0 退化为贪心 | [链接](./experiments/concepts-guide.md#32-temperature) |
+| top_k / top_p | 限定骰子候选池：固定前 K 个 / 累计概率 p 的自适应集合 | [链接](./experiments/concepts-guide.md#33-top-k--top-p) |
+| 种子 | 固定 RNG 初始状态=固定"随机"数列；同环境 100% 可复现 | [链接](./experiments/concepts-guide.md#34-随机种子与伪随机) |
+| Prefill | 整段 prompt 一次并行处理，填满 KV 缓存，产出第 1 个 token（算力型） | [链接](./experiments/concepts-guide.md#41-prefill) |
+| Decode | 每步进 1 出 1 的串行续写，历史以缓存形式参与（访存型） | [链接](./experiments/concepts-guide.md#42-decode) |
+| KV Cache | 存下已算好的 K/V，历史只读不重算；省时间、吃显存 | [链接](./experiments/concepts-guide.md#43-kv-cache) |
+| TTFT / TPOT | 首 token 延迟（由 Prefill 决定）/ 单 token 生成时间（由 Decode 决定）；总耗时 ≈ TTFT + N × TPOT | [链接](./experiments/concepts-guide.md#44-ttft-与-tpot) |
+| 蝴蝶效应 | 浮点差异在概率打平点翻转 token 选择，后续轨迹整体分叉 | [链接](./experiments/concepts-guide.md#51-浮点蝴蝶效应) |
 
 **验证 TTFT/TPOT 公式**：428 token × 20.2 ms/token ≈ 8.65 s，实测 8.66 s ✓
 
