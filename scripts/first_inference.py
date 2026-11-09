@@ -38,7 +38,9 @@ print(tokenizer.decode(inputs[0]))
 print("========================================")
 
 temperature = float(sys.argv[1]) if len(sys.argv) > 1 else 0.7
-print(f"4. Generating response (temperature={temperature})...")
+top_k = int(sys.argv[2]) if len(sys.argv) > 2 else 20        # 0 = 不限制
+top_p = float(sys.argv[3]) if len(sys.argv) > 3 else 0.8     # 1.0 = 不限制
+print(f"4. Generating response (temperature={temperature}, top_k={top_k}, top_p={top_p})...")
 
 with torch.inference_mode():
     outputs = model.generate(
@@ -46,6 +48,8 @@ with torch.inference_mode():
         max_new_tokens=128,
         do_sample=True,
         temperature=temperature,
+        top_k=top_k,
+        top_p=top_p,
         pad_token_id=tokenizer.eos_token_id
     )
 
