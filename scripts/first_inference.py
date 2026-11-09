@@ -1,4 +1,5 @@
 import sys
+import time
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -64,6 +65,33 @@ answer = tokenizer.decode(
 
 print("\n===== Qwen Response =====")
 print(answer)
+
+print("\n===== Manual decode loop (Prefill + Decode + KV Cache) =====")
+
+im_end_id = tokenizer.convert_tokens_to_ids("<|im_end|>")
+stop_ids = {tokenizer.eos_token_id, im_end_id}
+
+step_inputs = inputs          # 第一次喂入整个 prompt（Prefill）
+past_kv = None                # KV Cache，从第二步开始复用
+with torch.inference_mode():
+    for step in range(128):
+        t = time.perf_counter()
+        out = model(step_inputs, past_key_values=past_kv, use_cache=True)
+        dt_ms = (time.perf_counter() - t) * 1000
+
+        next_id = int(out.logits[0, -1].argmax())   # 贪心：只看最后一个位置
+        piece = tokenizer.decode(next_id)
+        print(
+            f"step {step:3d} | input {step_inputs.shape[-1]:3d} tok"
+            f" | {dt_ms:6.1f} ms | {piece!r}",
+            flush=True,
+        )
+
+        if next_id in stop_ids:
+            print(f"-> 命中停止符，循环结束（这次'纪律'由我们自己执行）")
+            break
+        past_kv = out.past_key_values       # 把 K/V 存起来给下一步
+        step_inputs = inputs.new_tensor([[next_id]])  # 之后每步只喂 1 个新 token（Decode）
 
 print("\n===== GPU Information =====")
 print("GPU:", torch.cuda.get_device_name(0))
