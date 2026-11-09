@@ -1,3 +1,4 @@
+import sys
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -36,13 +37,15 @@ print("===== Model Input (chat template) =====")
 print(tokenizer.decode(inputs[0]))
 print("========================================")
 
-print("4. Generating response...")
+temperature = float(sys.argv[1]) if len(sys.argv) > 1 else 0.7
+print(f"4. Generating response (temperature={temperature})...")
 
 with torch.inference_mode():
     outputs = model.generate(
         inputs,
         max_new_tokens=128,
-        do_sample=True,  # 实验五：采样生成，每次结果不同
+        do_sample=True,
+        temperature=temperature,
         pad_token_id=tokenizer.eos_token_id
     )
 
