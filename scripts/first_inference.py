@@ -42,9 +42,8 @@ with torch.inference_mode():
     outputs = model.generate(
         inputs,
         max_new_tokens=128,
-        do_sample=False,
-        pad_token_id=tokenizer.eos_token_id,
-        eos_token_id=None  # 实验四：不设停止符，模型无法"喊停"
+        do_sample=True,  # 实验五：采样生成，每次结果不同
+        pad_token_id=tokenizer.eos_token_id
     )
 
 answer_tokens = outputs[0]
