@@ -41,9 +41,10 @@ print("4. Generating response...")
 with torch.inference_mode():
     outputs = model.generate(
         inputs,
-        max_new_tokens=32,
+        max_new_tokens=128,
         do_sample=False,
-        pad_token_id=tokenizer.eos_token_id
+        pad_token_id=tokenizer.eos_token_id,
+        eos_token_id=None  # 实验四：不设停止符，模型无法"喊停"
     )
 
 answer_tokens = outputs[0]
