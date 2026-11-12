@@ -46,12 +46,14 @@
 │   ├── experiment-07.md          # top_k / top_p
 │   ├── experiment-08.md          # 固定随机种子
 │   ├── experiment-09.md          # 手写解码循环（Prefill/Decode/KV Cache/TTFT/TPOT）
-│   └── experiment-10.md          # use_cache 基准（KV Cache 价值实测）
+│   ├── experiment-10.md          # use_cache 基准（KV Cache 价值实测）
+│   └── experiment-11.md          # 固定工作量 A/B 基准（0.998x，修正实验10/10b）
 ├── .gitignore                    # 排除 models/ 与 __pycache__/
 ├── models/                       # 本地模型权重（git 忽略，需自行下载）
 │   └── Qwen2.5-1.5B-Instruct/
 └── scripts/
-    └── first_inference.py        # 实验主脚本（全部实验的最终形态）
+    ├── first_inference.py        # 实验主脚本（实验 1~10b 的最终形态）
+    └── exp11_kv_cache_ab.py      # 实验 11：固定工作量 KV Cache A/B 基准
 ```
 
 ## 快速开始
@@ -86,8 +88,9 @@ python3 scripts/first_inference.py 1.5 0 1.0 42     # 再固定种子：混乱�
 | 7 | [top_k / top_p](./experiments/experiment-07.md) | `+top_k/top_p=CLI参数` | 两道保险丝限定候选池；拆掉后高温采样语无伦次 | `5eb3c37` |
 | 8 | [固定随机种子](./experiments/experiment-08.md) | `+torch.manual_seed(seed)` | 伪随机=纯数学：同种子逐字复现，连混乱都可以 | `522b78f` |
 | 9 | [手写解码循环](./experiments/experiment-09.md) | `+约25行 for 循环替代 generate` | 亲眼看 Prefill（input 40+ tok）与 Decode（input 1 tok）；引出 TTFT/TPOT | `7d15555` |
-| 10 | [use_cache 基准](./experiments/experiment-10.md) | `+decode_loop(use_cache)` 双跑计时 | 无缓存只慢 x1.09——小模型处于开销主导区间 | `e8f7197` |
-| 10b | （并入实验 10 文档） | `range(128) → range(512)` | x1.34 显形，O(n²) 露头；并当场捕获蝴蝶效应（428≠434） | `42f09a1` |
+| 10 | [use_cache 基准](./experiments/experiment-10.md) | `+decode_loop(use_cache)` 双跑计时 | 无缓存只慢 x1.09（单次测量，后被实验 11 修正为噪声区间） | `e8f7197` |
+| 10b | （并入实验 10 文档） | `range(128) → range(512)` | x1.34，O(n²) 方向显现 + 捕获蝴蝶效应（428≠434）；幅度被手工循环测量结构放大，见实验 11 | `42f09a1` |
+| 11 | [固定工作量 A/B 基准](./experiments/experiment-11.md) | `+scripts/exp11_kv_cache_ab.py`（预热/交替/6轮中位） | **反转：0.998x 无统计差异**——batch-1 小模型 decode 访存主导，重算免费搭车 | `0229e43` |
 
 ---
 
@@ -125,7 +128,7 @@ python3 scripts/first_inference.py 1.5 0 1.0 42     # 再固定种子：混乱�
 - 采样 temp=0.1 多连跑：几乎逐字一致
 - 采样 temp=1.5 + top_k=0 + top_p=1.0：语无伦次；固定 seed=42 后逐字复现
 - 手写 Decode 单步：约 17~21 ms/token（含同步开销）
-- KV Cache 基准：128 步 x1.09 → 512 步 x1.34（详见[实验 10](./experiments/experiment-10.md)）
+- KV Cache 基准：手工循环 128 步 x1.09 → 512 步 x1.34（实验 10/10b，单次测量）；**固定工作量严格基准：0.998x 无统计差异**（[实验 11](./experiments/experiment-11.md)，6 轮中位，预热+交替）
 
 ---
 
@@ -134,13 +137,16 @@ python3 scripts/first_inference.py 1.5 0 1.0 42     # 再固定种子：混乱�
 1. **单次运行，无多轮取中位数**：实验 10 中步间噪声（±10 ms）大于缓存效应（+2 ms），x1.09 处于"效应≈噪声"区间；10b 通过拉长序列让效应显形（x1.34）；
 2. **开销主导区间**：1.5B 模型 + 4090 的组合下，单步时间由 kernel 发射与权重读取主导，计算增量几乎免费——KV Cache 的真实价值在大模型/长序列下才完全展开；
 3. **butterfly 观察（428≠434）为单次实拍**：分叉是否发生取决于是否撞上概率打平点，属概率事件，重复实验不一定每次复现；
-4. 计时含 `torch.cuda.synchronize()` 同步开销，绝对值偏保守，相对比较有效。
+4. 计时含 `torch.cuda.synchronize()` 同步开销，绝对值偏保守，相对比较有效；
+5. **实验 10/10b 的 speedup 数字（x1.09 / x1.34）已被实验 11 修正**：那是手工循环结构（逐步 sync/decode/物化完整 logits）下的单次测量，夸大了差距；严格基准下该负载为 0.998x。10b 的方向性结论（序列越长差距越大）仍成立。
 
 ---
 
 ## Git 实验地图
 
 ```text
+(HEAD)   实验 11 文档：固定工作量基准 0.998x 无差异（修正 10/10b + README/concepts 更新）
+0229e43  实验 11：KV Cache A/B 基准脚本（预热/交替/6轮中位）
 fc19bc8  Add learning README（总览 + experiments/ 详细文档）
 42f09a1  实验 10b：解码循环 128→512 步，二次增长显形（x1.34，捕获蝴蝶效应）
 e8f7197  实验 10：use_cache 开/关基准（重算 vs KV Cache，x1.09）

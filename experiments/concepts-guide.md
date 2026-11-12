@@ -230,6 +230,8 @@ logits → ÷T（温度）→ top_k 截断 → top_p 截断 → softmax → 掷�
 
 **实验证据**：[实验 10/10b](./experiment-10.md) —— 128 步 x1.09 → 512 步 x1.34；缓存版 ms/token 对长度免疫（21.3→20.2），无缓存版持续爬升（23.3→26.8）。
 
+> 📎 **重要修正（[实验 11](./experiment-11.md)）**：用固定工作量的严格基准（预热 / 交替顺序 / 6 轮取中位、`min=max_new_tokens=128`）重测同负载：**0.998x，无统计差异**。手工循环的逐步 `synchronize()` / `tokenizer.decode()` / 物化完整 logits 开销夸大了此前差距；且 `generate()` 内部自动设置 `num_logits_to_keep=1`（无缓存也只算最后位置的 LM Head）。batch-1 小模型 decode 为**访存主导**——每步都要搬运同样的 ~3GB 权重，重算 FLOPs 藏在闲置算力里近似免费。KV Cache 的加速收益在大模型、长序列、大 batch 下才显现。
+
 **代价与瘦身**：缓存省时间但**吃显存**，每步长一截；长上下文时 KV Cache 显存可超过模型权重本身。瘦身技术：
 
 | 技术 | 思路 |
