@@ -34,6 +34,7 @@
 ```
 .
 ├── README.md                     # 本页：总览 + 改动一览
+├── AGENTS.md                     # 工作规则（所有修改与对话记录必须入库，git 管理）
 ├── experiments/                  # ★ 每个实验的详细记录
 │   ├── concepts-guide.md         # ★ 核心概念详解（是什么→怎么工作→实验证据→工程实践）
 │   ├── pipeline-walkthrough.md   # ★ 输入/输出流水线三轮实录（含 Jinja2 模板源码与 44+48 枚 token 全表）
@@ -51,9 +52,11 @@
 ├── .gitignore                    # 排除 models/ 与 __pycache__/
 ├── models/                       # 本地模型权重（git 忽略，需自行下载）
 │   └── Qwen2.5-1.5B-Instruct/
+├── conversation-records/         # ★ 对话实录（逐字）：厨房类比讲访存主导 / Roofline 模型与算子优化路线图
 └── scripts/
     ├── first_inference.py        # 实验主脚本（实验 1~10b 的最终形态）
-    └── exp11_kv_cache_ab.py      # 实验 11：固定工作量 KV Cache A/B 基准
+    ├── exp11_kv_cache_ab.py      # 实验 11：固定工作量 KV Cache A/B 基准
+    └── roofline.py               # Qwen3.6-35B-A3B @ 4090 解码 Roofline 计算器（自辅助会话回收）
 ```
 
 ## 快速开始

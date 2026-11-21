@@ -79,6 +79,8 @@ Cache speedup: 0.998x
 - 重算多出来的 FLOPs 落在 4090 **大量闲置的算力**上，藏在访存等待的"影子"里 → 近似免费；
 - 显存端同理：KV Cache 约 5MB 量级 vs 权重 2.88GiB（实测峰值 2.894 vs 2.896 GiB）—— 时间和空间两端在这个规模下都看不见。
 
+> 📎 这一原理的**通俗版（厨房类比）**逐字实录见 [conversation-records/2026-11-12-exp11-memory-bound-kitchen-analogy.md](../conversation-records/2026-11-12-exp11-memory-bound-kitchen-analogy.md)。
+
 ### 什么条件下答案会反转（KV Cache 何时拉开差距）
 
 | 条件 | 机制 |
