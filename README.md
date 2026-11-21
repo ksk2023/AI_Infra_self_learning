@@ -35,6 +35,7 @@
 .
 ├── README.md                     # 本页：总览 + 改动一览
 ├── AGENTS.md                     # 工作规则（所有修改与对话记录必须入库，git 管理）
+├── infra&chips_map.md            # ★ 从芯片底层到 AI Infra：计算系统全景地图（分层架构/执行时序/Amdahl 定律/学习路线）
 ├── experiments/                  # ★ 每个实验的详细记录
 │   ├── concepts-guide.md         # ★ 核心概念详解（是什么→怎么工作→实验证据→工程实践）
 │   ├── pipeline-walkthrough.md   # ★ 输入/输出流水线三轮实录（含 Jinja2 模板源码与 44+48 枚 token 全表）
@@ -100,7 +101,8 @@ python3 scripts/first_inference.py 1.5 0 1.0 42     # 再固定种子：混乱�
 ## 核心概念速查表
 
 > 每个概念的**详细解释（是什么 → 怎么工作 → 实验证据 → 工程实践）**见 **[概念详解](./experiments/concepts-guide.md)**；
-> 一个问题从输入到输出的**逐步真实数据实录**（流程图 + 全部中间产物）见 **[流水线实录](./experiments/pipeline-walkthrough.md)**。下表是快速索引。
+> 一个问题从输入到输出的**逐步真实数据实录**（流程图 + 全部中间产物）见 **[流水线实录](./experiments/pipeline-walkthrough.md)**；
+> 从芯片到 AI 应用的**七层全景地图**（分层架构 / 执行时序 / Amdahl 定律 / 学习路线）见 **[infra&chips_map.md](./infra&chips_map.md)**。下表是快速索引。
 
 | 概念 | 一句话 | 详解 |
 |---|---|---|
