@@ -95,6 +95,7 @@ python3 scripts/first_inference.py 1.5 0 1.0 42     # 再固定种子：混乱�
 | 10 | [use_cache 基准](./experiments/experiment-10.md) | `+decode_loop(use_cache)` 双跑计时 | 无缓存只慢 x1.09（单次测量，后被实验 11 修正为噪声区间） | `e8f7197` |
 | 10b | （并入实验 10 文档） | `range(128) → range(512)` | x1.34，O(n²) 方向显现 + 捕获蝴蝶效应（428≠434）；幅度被手工循环测量结构放大，见实验 11 | `42f09a1` |
 | 11 | [固定工作量 A/B 基准](./experiments/experiment-11.md) | `+scripts/exp11_kv_cache_ab.py`（预热/交替/6轮中位） | **反转：0.998x 无统计差异**——batch-1 小模型 decode 访存主导，重算免费搭车 | `0229e43` |
+| 12 | [4090 解码算子优化（Qwen3.6-35B-A3B Q4_K_S）](./experiments/experiment-12-4090-qwen36-decode-optim.md) | `+scripts/opt4090/`（免root工具链/基准/自动守卫/roofline） | 干净卡基线 **195.4 tok/s**（屋顶 33.7%）；fa/KV q8_0/MMVQ 微调三项全被实测否决——剩余空间在聚合并发与量化档位 | 本次 |
 
 ---
 

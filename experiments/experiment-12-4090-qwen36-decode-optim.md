@@ -1,0 +1,99 @@
+# Experiment 12: Qwen3.6-35B-A3B 单卡 RTX 4090 解码算子优化(决策级 A/B)
+
+> 会话:`sess_2e8d6d6f-f5a4-4dfc-b746-0be5c7d915a0` | 日期:2026-11-19 ~ 11-26
+> 方法论参照 T58 NPU 黑客松实战(`NPU/T58-Calculate/`,50.3→17.26 ms/token,2.9×):
+> 差分计时、单变量改动、预注册预测、数值/输出正确性证据、诚实记录被否决项。
+> 硬件约束:**组内约定实验仅使用 GPU0**;4×4090 由全组共享。
+
+## 一句话结论
+
+llama.cpp v1.0.0(CUDA 自编译)+ Q4_K_S 在干净 4090 上单流解码 **195.4 tok/s**(屋顶达成率 33.7%);
+fa 开关、KV q8_0@32K、MMVQ nwarps 微调三项候选全部被实测否决——上游算法级融合与微参数已充分调优,
+本模型在本卡上的剩余空间在**并发聚合规模**与**量化档位**,而非单算子微调。
+
+## 理论屋顶(roofline.py)
+
+```
+W(激活权重)  2.69B × 4.8bpw = 1.61 GB/token
+S(DeltaNet态) 30层×2MiB×4B×2(读写) = 0.13 GB/token
+KV           10 层全注意力 × 2×2头×256×2B = 20 KiB/pos
+短上下文屋顶:1008 GB/s ÷ 1.74 GB ≈ 579 tok/s
+```
+
+## 改动点(相对默认配置)
+
+| 候选 | 改动 | 实测 | 判定 |
+|---|---|---|---|
+| fa off | flash-attn 关闭 | 194.9 vs 195.4 | 中性,保留 fa on |
+| KV q8_0 | -ctk/-ctv q8_0 @32K | 192.9 | **-1.3%,否决** |
+| mmvqw8 | MMVQ 参数表 ncols=1 nwarps 4→8 | 174.0 | **-11%,否决** |
+| mmvx64/mmvx16 | GGML_CUDA_MMV_X(未测) | — | 源码分析判定不作用于 mmvq,撤销 |
+| repack off | --repack 0(忙卡曾 -6.3%) | — | 判定为噪声:repack 是 CPU_REPACK 布局,全 GPU 卸载无关 |
+
+## 核心代码
+
+- 工具链组装(免 root CUDA):`scripts/opt4090/make-cuda-home.sh`
+  - pip wheel 的 nvcc 只有 ptxas → NVIDIA 官方 deb 免 root 解包(nvcc 12.4 + nvvm + cudart-dev)
+  - CCCL 必须与 nvcc 同版本(12.9 配 12.4 编译报错 → 降级 cccl 12.4.127)
+  - CUDA≥12.4 引入符号版本化(`cudaGetLastError@libcudart.so.12`)→ 链接必须用 12.4 运行时库
+  - 传递依赖解析:`-Wl,-rpath-link` 加入链接器搜索路径
+- 基准:`scripts/opt4090/bench.sh`(llama-bench,自动记录 GPU 快照)
+- 自动化:`scripts/opt4090/idle_quick_suite.sh`(5 分钟空闲阈值 + 碰撞守卫)
+- 聚合:`scripts/opt4090/serve_bench.sh`(llama-server -np N,1/2/4/8 路)
+- 屋顶计算:`scripts/roofline.py`(可插拔参数)
+
+## 运行方式
+
+```bash
+source scripts/opt4090/env.sh
+# 基准(仅 GPU0)
+BENCH_GPU=0 bash scripts/opt4090/bench.sh <标签> -p 512 -n 256 -r 5
+# 等空闲卡自动跑精简套件
+bash scripts/opt4090/idle_quick_suite.sh
+# 并发聚合
+bash scripts/opt4090/serve_bench.sh 4
+# 部署推荐
+llama-server -m <Q4_K_S.gguf> -ngl 99 -fa on -c 131072 --port 8000
+```
+
+## 实测结果(2026-11-23 08:23-08:30,GPU0 干净窗口,5 轮中位数)
+
+| 配置 | tg256 (tok/s) | pp512 | pp32768 |
+|---|---|---|---|
+| 基线(fa on) | **195.42 ± 0.14** | 11109 | — |
+| KV q8_0 | 192.88 | 10686 | 9692 |
+| KV f16(32K 上下文) | 194.87 | 10921 | 9822 |
+| mmvqw8 变体 | 173.95 | 10920 | — |
+| 还原复测 | 195.00 | 11109 | — |
+
+预注册预测对照:基线预测 85~95(实测 195,严重保守);KV q8_0@32K 预测 +5~15%(实测 -1.3%,证伪);
+mmvqw8 预测 ±3%(实测 -11%,证伪)。**误判教训全部留档 `scripts/opt4090/log.md`。**
+
+## 原理与结论
+
+1. **源码侦察先行**(operator-analysis.md):上游已融合 MoE 路由 gate/GLU/共享专家
+   (`mul_mat_vec_q_moe` 单内核)、rms_norm+mul+rope 图级融合、CUDA Graphs 默认启用;
+   PDL(程序化依赖启动)仅 Hopper+,4090 编译期排除——系统级开销已被上游榨干。
+2. **KV q8_0 为何不涨**:32K 时 KV 读取仅占每 token 流量的 ~27%(拐点在 N≈85K),
+   减半收益被反量化算力开销吃掉。此模型 30/40 层是线性注意力,KV 天生就小,
+   KV 量化的价值主要在**显存容量**(省一半 KV → 上下文容量 ×2)而非速度。
+3. **忙卡数据为何不可信**:GPU1(队友占 80%)上 fa -6.2%、repack -6.3%,
+   干净卡复测分别为 -0.2%、±0% —— 噪声地板证据:fa-off 与 repack-off 忙卡数字同为 74.0。
+4. **4090 单卡 195 tok/s 的意义**:3B 激活 × Q4(4.8bpw)→ 1.74 GB/token,
+   1008 GB/s 带宽的 33.7% 被 MoE 路由/逐层依赖链吃掉属正常水平;
+   继续逼近屋顶需依赖聚合并发(权重读取摊薄)而非单流微调。
+
+## 延伸推论
+
+- 组内多人共用:**-np 4/8 连续批处理**聚合吞吐预期 400~800 tok/s(serve_bench 实测补充中);
+- 上下文档位:-c 131072 稳(权重 19.4G + KV 2.6G + 缓冲 ≈ 23.5G < 24.2G);
+- 换 IQ4_XS(4.2bpw):屋顶 +14%,质量略降,是下一个值得 A/B 的量化档位;
+- MTP 投机解码(该模型训练了多 token 预测头)是理论上最强的下一级杠杆(×1.5~2)。
+
+## Limitations
+
+- 决策级数据来自一个 ~10 分钟的干净窗口(5 轮中位数,±0.3% 内稳定),未能在同窗口测完全部 7 步矩阵;
+  mmvx64/mmvx16 变体按源码分析撤销,未实测(若将来窗口富余可补,预期 ±0%);
+- serve_bench 首轮因健康检查 bug(503 Loading 被当就绪)作废,修复后重跑的数据见 log.md 追加;
+- 正确性验证:llama-cli temp=0 中文生成连贯正确(2026-11-20,GPU1 链路验证);
+  但未做量化层的逐张量数值对照(等效于 T58 的 evidence 分级中"应用端到端"级)。
