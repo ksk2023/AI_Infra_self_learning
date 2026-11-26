@@ -24,12 +24,15 @@ done
 echo "server 就绪(并发槽=$CONC),开始 $CONC 路请求 × $NTOK token"
 
 T0=$(date +%s.%N)
+cpids=()
 for i in $(seq 1 "$CONC"); do
-  curl -s http://127.0.0.1:$PORT/v1/completions -H 'Content-Type: application/json' \
+  curl -s --max-time 600 http://127.0.0.1:$PORT/v1/completions -H 'Content-Type: application/json' \
     -d "{\"prompt\":\"用中文详细介绍一下第${i}个主题:人工智能的发展历史。\",\"max_tokens\":$NTOK,\"temperature\":0}" \
     > /tmp/serve_out_$i.json &
+  cpids+=($!)
 done
-wait
+# 只等 curl,不等 llama-server(否则永远挂起)
+for p in "${cpids[@]}"; do wait "$p"; done
 T1=$(date +%s.%N)
 
 TOT=0
@@ -38,5 +41,12 @@ for i in $(seq 1 "$CONC"); do
   TOT=$((TOT+n))
 done
 WALL=$(python3 -c "print(f'{$T1-$T0:.1f}')")
-python3 -c "print(f'并发={$CONC} 总token={$TOT} 墙钟={$WALL}s 聚合吞吐={$TOT/$WALL:.1f} tok/s 单流等价={$TOT/$WALL/$CONC:.1f} tok/s')"
-grep -oE 'eval time.*tokens per second.*' /tmp/serve_bench.log | tail -1
+python3 -c "print(f'并发={$CONC} 总token={$TOT} 墙钟={$WALL}s 端到端聚合={$TOT/$WALL:.1f} tok/s 端到端单流={$TOT/$WALL/$CONC:.1f} tok/s')"
+# 纯生成口径:取各槽 server 自报的 predicted tok/s(不含 prefill),二者不可混用
+python3 -I -c "
+import json,sys
+rs=[json.load(open(f'/tmp/serve_out_{i}.json')) for i in range(1,$CONC+1)]
+g=[r['timings']['predicted_per_second'] for r in rs if 'timings' in r]
+p=[r['timings']['prompt_per_second'] for r in rs if 'timings' in r]
+if g: print(f'纯生成: 单路均值={sum(g)/len(g):.1f} tok/s  聚合={sum(g):.1f} tok/s  (prefill {sum(p)/len(p):.0f} tok/s)')
+"
